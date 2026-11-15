@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>תרגול ניקוד</title>
+<style>
+  body { font-family: "Segoe UI", Arial, sans-serif; background: #eef6ff; margin: 0; padding: 16px; color: #223; }
+  .card { max-width: 600px; margin: 0 auto; background: #fff; border-radius: 18px; padding: 20px; box-shadow: 0 4px 14px rgba(0,0,0,.12); text-align: center; }
+  h1 { margin: 0 0 8px; font-size: 28px; }
+  .modes button, .opts button { font-size: 17px; padding: 8px 14px; margin: 4px; border-radius: 10px; border: 2px solid #4a90e2; background: #fff; cursor: pointer; font-family: inherit; }
+  .modes button.on { background: #4a90e2; color: #fff; }
+  .vowels label { display: inline-block; margin: 3px 6px; font-size: 16px; cursor: pointer; }
+  .big { font-size: 130px; line-height: 1.3; font-family: "David", "Times New Roman", serif; margin: 6px 0; min-height: 40px; }
+  .prompt { font-size: 22px; margin-bottom: 4px; }
+  .opts button { font-size: 26px; min-width: 110px; padding: 12px 16px; }
+  .opts button.good { background: #5cb85c; color: #fff; border-color: #5cb85c; }
+  .opts button.bad { background: #e57373; color: #fff; border-color: #e57373; }
+  #msg { font-size: 24px; min-height: 36px; margin: 8px 0; font-weight: bold; }
+  #score { font-size: 19px; color: #555; }
+  .small { font-size: 16px !important; min-width: 0 !important; background: #f3f3f3; border-color: #aaa !important; padding: 8px 14px !important; }
+  .chart { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
+  .chart div { background: #f7fbff; border: 1px solid #cde; border-radius: 10px; padding: 6px; font-size: 15px; }
+  .chart span { display: block; font-size: 40px; font-family: "David", serif; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>תרגול ניקוד עם צִפּי &#127775;</h1>
+  <div class="modes">
+    <button id="m2" class="on" onclick="setMode(2)">מה שם התנועה?</button>
+    <button id="m3" onclick="setMode(3)">מצאו את התנועה</button>
+    <button id="m4" onclick="setMode(4)">אותו צליל</button>
+    <button id="m5" onclick="setMode(5)">גדולה, קטנה או חטופה?</button>
+    <button id="m6" onclick="setMode(6)">תנועה בתוך מילה</button>
+    <button id="m7" onclick="setMode(7)">גדולה, קטנה, חטופה או שווא?</button>
+    <button id="m8" onclick="setMode(8)">שווא נע או נח?</button>
+  </div>
+  <div class="vowels" id="vowelPick"></div>
+
+  <div class="prompt" id="prompt"></div>
+  <div class="big" id="big"></div>
+  <div class="opts" id="opts"></div>
+  <div id="msg"></div>
+  <div id="score"></div>
+  <div class="opts">
+    <button class="small" onclick="speak()">&#128266; שמעו</button>
+    <button class="small" onclick="next()">הבא &larr;</button>
+    <button class="small" onclick="toggleChart()">דף עזר</button>
+  </div>
+  <div class="chart" id="chart" style="display:none"></div>
+</div>
+
+<script>
+// g = sound group: vowels with the same g sound the same in modern Hebrew
+const VOWELS = [
+  { name:"קמץ",        mark:"ָ", g:"a", t:"גדולה", on:true },
+  { name:"צירי",       mark:"ֵ", g:"e", t:"גדולה", on:true },
+  { name:"חיריק מלא",  mark:"ִ", g:"i", t:"גדולה", on:true, full:"i" },
+  { name:"חולם מלא",   mark:"ֹ", g:"o", t:"גדולה", on:true, full:"o" },
+  { name:"שורוק",      mark:"וּ", g:"u", t:"גדולה", on:true, shuruk:true },
+  { name:"פתח",        mark:"ַ", g:"a", t:"קטנה", on:true },
+  { name:"סגול",       mark:"ֶ", g:"e", t:"קטנה", on:true },
+  { name:"חיריק חסר",  mark:"ִ", g:"i", t:"קטנה", on:true },
+  { name:"חולם חסר",   mark:"ֹ", g:"o", t:"קטנה", on:true },
+  { name:"קובוץ",      mark:"ֻ", g:"u", t:"קטנה", on:true },
+  { name:"חטף פתח",    mark:"ֲ", g:"a", t:"חטופה", on:true, chataf:true },
+  { name:"חטף סגול",   mark:"ֱ", g:"e", t:"חטופה", on:true, chataf:true },
+  { name:"חטף קמץ",    mark:"ֳ", g:"o", t:"חטופה", on:true, chataf:true },
+];
+// real words: [text, vowel name in that piece (or null)]
+const WORDS = [
+  [["שָׁ","קמץ"],["לוֹ","חולם מלא"],["ם",null]],
+  [["סִ","חיריק חסר"],["פּוּ","שורוק"],["ר",null]],
+  [["בַּ","פתח"],["יִ","חיריק חסר"],["ת",null]],
+  [["מֶ","סגול"],["לֶ","סגול"],["ךְ",null]],
+  [["חֲ","חטף פתח"],["לוֹ","חולם מלא"],["ם",null]],
+  [["אֲ","חטף פתח"],["נִי","חיריק מלא"]],
+  [["חֲ","חטף פתח"],["נוּ","שורוק"],["ת",null]],
+  [["גָּ","קמץ"],["דוֹ","חולם מלא"],["ל",null]],
+  [["לֵ","צירי"],["ב",null]],
+  [["סֵ","צירי"],["פֶ","סגול"],["ר",null]],
+  [["כֹּ","חולם חסר"],["ל",null]],
+  [["יֶ","סגול"],["לֶ","סגול"],["ד",null]],
+  [["נַ","פתח"],["עַ","פתח"],["ר",null]],
+  [["אֱ","חטף סגול"],["מֶ","סגול"],["ת",null]],
+  [["חָ","קמץ"],["כָ","קמץ"],["ם",null]],
+  [["סֻ","קובוץ"],["כָּ","קמץ"],["ה",null]],
+  [["פִּי","חיריק מלא"],["ל",null]],
+  [["אֳ","חטף קמץ"],["נִ","חיריק חסר"],["יָּ","קמץ"],["ה",null]],
+];
+// shva words: the piece with a type ("שווא נע"/"שווא נח") is the shva to ask about
+const SHVA_WORDS = [
+  { pieces:[["מַ",null],["לְ","שווא נח"],["כָּ",null],["ה",null]], why:"השווא בא אחרי תנועה קטנה (פתח) – שווא נח" },
+  { pieces:[["שִׁ",null],["מְ","שווא נח"],["חָ",null],["ה",null]], why:"השווא בא אחרי תנועה קטנה (חיריק) – שווא נח" },
+  { pieces:[["יַ",null],["לְ","שווא נח"],["דָּ",null],["ה",null]], why:"השווא בא אחרי תנועה קטנה (פתח) – שווא נח" },
+  { pieces:[["מִ",null],["סְ","שווא נח"],["פָּ",null],["ר",null]], why:"השווא בא אחרי תנועה קטנה (חיריק) – שווא נח" },
+  { pieces:[["שִׁ",null],["בְ","שווא נח"],["עָ",null],["ה",null]], why:"השווא בא אחרי תנועה קטנה (חיריק) – שווא נח" },
+  { pieces:[["בְּ","שווא נע"],["רָ",null],["כָ",null],["ה",null]], why:"השווא בתחילת מילה – שווא נע" },
+  { pieces:[["שְׁ","שווא נע"],["לוֹ",null],["ם",null]], why:"השווא בתחילת מילה – שווא נע" },
+  { pieces:[["גְּ","שווא נע"],["דוֹ",null],["לָ",null],["ה",null]], why:"השווא בתחילת מילה – שווא נע" },
+  { pieces:[["הוֹ",null],["לְ","שווא נע"],["כִים",null]], why:"השווא בא אחרי תנועה גדולה (חולם מלא) – שווא נע" },
+  { pieces:[["שׁוֹ",null],["מְ","שווא נע"],["רִים",null]], why:"השווא בא אחרי תנועה גדולה (חולם מלא) – שווא נע" },
+  { pieces:[["כּוֹ",null],["תְ","שווא נע"],["בִים",null]], why:"השווא בא אחרי תנועה גדולה (חולם מלא) – שווא נע" },
+];
+const GUTT =["א","ה","ח","ע"];
+const D = "ּ";
+const LETTERS = [
+  "ב"+D,"ג","ד","ה","ז","ח","ט","י","כ"+D,"ל",
+  "מ","נ","ס","פ"+D,"צ","ק","ר","שׁ","ת"+D
+];
+const ENCOURAGE = ["כל הכבוד!","יפה מאוד!","מצוין צִפּי!","נכון!","וואו, איזו חכמה!","אלופה!"];
+const GROUPNAME = { a:"קמץ ופתח", e:"צירי וסגול", u:"קובוץ ושורוק", i:"חיריק", o:"חולם" };
+
+let mode = 2, current = null, answered = false, right = 0, total = 0, streak = 0;
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const el = id => document.getElementById(id);
+const shuffle = a => a.map(x => [Math.random(), x]).sort((p, q) => p[0] - q[0]).map(p => p[1]);
+const active = () => { const a = VOWELS.filter(v => v.on); return a.length ? a : VOWELS; };
+
+function draw(letter, v) {
+  if (v.chataf) letter = pick(GUTT);
+  if (v.shuruk) return letter.replace(/ּ/, "") + "ו" + D;
+  if (v.full === "i") return letter + v.mark + "י";
+  if (v.full === "o") return letter + "ו" + v.mark;
+  return letter + v.mark;
+}
+
+function buildPicker() {
+  el("vowelPick").innerHTML = "<div>אילו תנועות לתרגל:</div>" + VOWELS.map((v, i) =>
+    `<label><input type="checkbox" ${v.on ? "checked" : ""} onchange="VOWELS[${i}].on=this.checked; next()"> ${v.name}</label>`).join("");
+}
+
+function setMode(m) {
+  mode = m;
+  [2,3,4,5,6,7,8].forEach(i => el("m"+i).classList.toggle("on", i === m));
+  next();
+}
+
+function next() {
+  answered = false; el("msg").textContent = ""; el("big").style.fontSize = "";
+  const v = pick(active()), L = pick(LETTERS);
+  let options = [], correct = "", shown = "", prompt = "", optStyle = "";
+  if (mode === 1) {            // syllable -> which letter
+    shown = draw(L, v); correct = L.replace(/ּ/, ""); prompt = "באיזו אות מתחילה ההברה?";
+    options = [correct];
+    while (options.length < 4) {
+      const o = pick(LETTERS).replace(/ּ/, "");
+      if (!options.includes(o)) options.push(o);
+    }
+    optStyle = "font-size:56px;font-family:David,serif";
+  } else if (mode === 2) {     // syllable -> vowel name
+    shown = draw(L, v); correct = v.name; prompt = "מה שם התנועה?";
+    options = [correct, ...shuffle(VOWELS.filter(x => x.name !== v.name && x.t === v.t)).slice(0, 3).map(x => x.name)];
+    while (options.length < 4) { const o = pick(VOWELS).name; if (!options.includes(o)) options.push(o); }
+  } else if (mode === 3) {     // vowel name -> pick the right syllable
+    correct = draw(L, v); shown = "";
+    prompt = "איפה יש " + v.name + "?";
+    options = [correct, ...shuffle(VOWELS.filter(x => x.name !== v.name && x.mark !== v.mark)).slice(0, 3).map(x => draw(L, x))];
+    optStyle = "font-size:56px;font-family:David,serif";
+  } else if (mode === 7) {     // big / small / chataf / shva
+    const pool = [...active(), { mark:"ְ", t:"שווא" }, { mark:"ְ", t:"שווא" }];
+    const q = pick(pool);
+    shown = q.t === "שווא" ? L + q.mark : draw(L, q);
+    correct = q.t; prompt = "איזה סימן זה?";
+    options = ["גדולה", "קטנה", "חטופה", "שווא"];
+    current = { shown, correct };
+    el("prompt").textContent = prompt; el("big").textContent = shown;
+    return render(options, optStyle);
+  } else if (mode === 8) {     // shva na or shva nach
+    const w = pick(SHVA_WORDS);
+    const idx = w.pieces.findIndex(p => p[1]);
+    const html = w.pieces.map((s, i) => i === idx ? `<span style="color:#e22">${s[0]}</span>` : s[0]).join("");
+    current = { shown: w.pieces.map(s => s[0]).join(""), correct: w.pieces[idx][1], html: true, why: w.why };
+    el("prompt").textContent = "השווא האדום הוא שווא נע או שווא נח?";
+    el("big").style.fontSize = "90px"; el("big").innerHTML = html;
+    return render(["שווא נע", "שווא נח"], optStyle);
+  } else if (mode === 6) {     // vowel inside a real word
+    const w = pick(WORDS);
+    const idx = shuffle(w.map((s, i) => s[1] ? i : -1).filter(i => i >= 0))[0];
+    const vv = VOWELS.find(x => x.name === w[idx][1]);
+    const html = w.map((s, i) => i === idx ? `<span style="color:#e22">${s[0]}</span>` : s[0]).join("");
+    correct = vv.name;
+    options = [correct, ...shuffle(VOWELS.filter(x => x.name !== correct && x.t === vv.t)).slice(0, 3).map(x => x.name)];
+    while (options.length < 4) { const o = pick(VOWELS).name; if (!options.includes(o)) options.push(o); }
+    current = { shown: w.map(s => s[0]).join(""), correct, html: true };
+    el("prompt").textContent = "מה שם התנועה בהברה האדומה?";
+    el("big").style.fontSize = "90px"; el("big").innerHTML = html;
+    return render(options, optStyle);
+  } else if (mode === 5) {     // big, small or chataf
+    shown = draw(L, v); correct = v.t; prompt = "איזו תנועה זו?";
+    options = ["גדולה", "קטנה", "חטופה"];
+    current = { shown, correct };
+    el("prompt").textContent = prompt; el("big").textContent = shown;
+    return render(options, optStyle);
+  } else {                     // same sound
+    const withPartner = VOWELS.filter(x => VOWELS.some(y => y !== x && y.g === x.g));
+    const pool = withPartner.filter(x => x.on);
+    const w = pick(pool.length ? pool : withPartner);
+    const partner = VOWELS.find(y => y !== w && y.g === w.g);
+    shown = draw(L, w); correct = partner.name;
+    prompt = "איזו תנועה נשמעת אותו דבר כמו " + w.name + "?";
+    options = [correct, ...shuffle(VOWELS.filter(x => x.g !== w.g)).slice(0, 3).map(x => x.name)];
+    current = { shown, correct, speakText: shown };
+    el("prompt").textContent = prompt; el("big").textContent = shown;
+    return render(options, optStyle);
+  }
+  current = { shown: mode === 3 ? correct : shown, correct };
+  el("prompt").textContent = prompt;
+  el("big").textContent = shown;
+  render(options, optStyle);
+  if (mode === 1) speak();
+}
+
+function render(options, optStyle) {
+  el("opts").innerHTML = "";
+  shuffle(options).forEach(o => {
+    const b = document.createElement("button");
+    b.textContent = o; b.style.cssText = optStyle || "";
+    b.onclick = () => answer(b, o);
+    el("opts").appendChild(b);
+  });
+  updateScore();
+}
+
+function answer(btn, o) {
+  if (answered) return;
+  total++;
+  if (o === current.correct) {
+    answered = true; right++; streak++;
+    btn.classList.add("good");
+    el("msg").textContent = pick(ENCOURAGE) + (streak >= 3 ? "  🔥 " + streak + " ברצף!" : "") + (current.why ? " – " + current.why : "");
+    if (!current.html) el("big").textContent = current.shown;
+    updateScore(); speak();
+    setTimeout(next, current.why ? 3500 : 1500);
+  } else {
+    streak = 0;
+    btn.classList.add("bad");
+    el("msg").textContent = "כמעט! נסי שוב.";
+    updateScore();
+  }
+}
+
+function updateScore() { el("score").textContent = "ניקוד: " + right + " מתוך " + total; }
+
+function speak() {
+  if (!window.speechSynthesis || !current) return;
+  const u = new SpeechSynthesisUtterance(current.shown || current.correct);
+  u.lang = "he-IL"; u.rate = 0.7;
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
+}
+
+function toggleChart() {
+  const c = el("chart");
+  if (c.style.display === "none") {
+    c.innerHTML = VOWELS.map(v => `<div><span>${draw("ב"+D, v)}</span>${v.name}<br><small>תנועה ${v.t}</small></div>`).join("");
+    c.style.display = "grid";
+  } else c.style.display = "none";
+}
+
+buildPicker();
+next();
+</script>
+</body>
+</html>
